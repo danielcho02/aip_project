@@ -1,0 +1,10 @@
+data/
+outputs/
+*.zip
+*.pt
+*.pth
+__pycache__/
+.env
+.kaggle/
+kaggle.json
+.vscode/sftp.json

@@ -1,10 +1,85 @@
 # Project Status
 
-Last updated: 2026.05.20 KST
+Last updated: 2026.05.20 15:00 KST
 
 ---
 
 ## Latest Update
+
+### 2026.05.20 15:00 KST
+
+#### TorchXRayVision 학습 및 RSNA external validation 완료
+
+Proposal에 포함된 후보 모델 B인 TorchXRayVision 사전학습 모델 실험을 완료했다.
+
+사용한 weight:
+
+- `densenet121-res224-chex`
+
+주의:
+
+- RSNA weight는 사용하지 않음
+- `all` weight도 사용하지 않음
+- RSNA는 학습에 사용하지 않고 external validation에만 사용
+
+추가된 코드:
+
+- `src/models/torchxrayvision_model.py`
+- `src/train_torchxrayvision.py`
+- `src/evaluate_torchxrayvision_external.py`
+
+TorchXRayVision 학습 결과:
+
+- epochs: 10
+- batch size: 32
+- lr: 1e-4
+- seed: 42
+- Best val AUC: 0.9968
+
+Kaggle internal validation 결과:
+
+- Accuracy: 0.9762
+- Precision: 0.9871
+- Recall: 0.9808
+- F1-score: 0.9840
+- AUC: 0.9968
+- threshold: 0.5366
+- n_samples: 1051
+
+RSNA external validation 방식:
+
+- Kaggle validation에서 Youden's J statistic으로 threshold 계산
+- 계산된 threshold를 RSNA에 그대로 적용
+- RSNA에서는 threshold 재튜닝하지 않음
+- RSNA sample: NORMAL 1000장 + PNEUMONIA 1000장 = 총 2000장
+
+RSNA external validation 결과:
+
+- Accuracy: 0.6820
+- Precision: 0.6204
+- Recall: 0.9380
+- F1-score: 0.7468
+- AUC: 0.7833
+- n_samples: 2000
+
+해석:
+
+- TorchXRayVision이 현재까지 RSNA external validation에서 가장 높은 AUC, Accuracy, Precision, F1-score를 기록함
+- 의료영상 사전학습 모델이 ResNet50보다 외부 데이터에서 조금 더 안정적인 성능을 보임
+- 다만 Kaggle internal AUC 0.9968 대비 RSNA external AUC 0.7833으로 하락하여 Domain Shift는 여전히 확인됨
+
+서버 산출물:
+
+- `outputs/torchxrayvision/best_torchxrayvision_seed42.pt`
+- `outputs/torchxrayvision/metrics_seed42.json`
+- `outputs/torchxrayvision_external/internal_threshold_seed42.json`
+- `outputs/torchxrayvision_external/internal_metrics_seed42.json`
+- `outputs/torchxrayvision_external/rsna_external_metrics_seed42.json`
+- `outputs/torchxrayvision_external/rsna_predictions_seed42.csv`
+
+---
+
+## Previous Updates
 
 ### 2026.05.20 KST
 
@@ -72,8 +147,6 @@ RSNA external validation 결과:
 - `outputs/resnet50_external/rsna_predictions_seed42.csv`
 
 ---
-
-## Previous Updates
 
 ### 2026.05.19 12:31 KST
 
@@ -183,6 +256,9 @@ Baseline CNN internal validation 결과:
 - `src/models/resnet50.py`
 - `src/train_resnet50.py`
 - `src/evaluate_resnet50_external.py`
+- `src/models/torchxrayvision_model.py`
+- `src/train_torchxrayvision.py`
+- `src/evaluate_torchxrayvision_external.py`
 
 ---
 
@@ -192,6 +268,7 @@ Baseline CNN internal validation 결과:
 |---|---:|---:|---:|---:|---:|
 | Baseline CNN | 0.9613 | 0.6402 | 0.6642 | 0.9700 | 0.5049 |
 | ResNet50 | 0.9983 | 0.7710 | 0.7165 | 0.9690 | 0.5683 |
+| TorchXRayVision | 0.9968 | 0.7833 | 0.7468 | 0.9380 | 0.6204 |
 
 ---
 
@@ -200,7 +277,8 @@ Baseline CNN internal validation 결과:
 - `outputs/`, `.pt`, `.pth` 파일은 GitHub에 올리지 않음
 - RSNA는 학습에 사용하지 않고 external validation에만 사용
 - RSNA threshold는 새로 튜닝하지 않고 Kaggle validation에서 정한 threshold를 그대로 적용
-- 현재 결과 기준, ResNet50이 Baseline보다 외부 성능은 개선했지만 Domain Shift는 여전히 확인됨
+- TorchXRayVision은 `densenet121-res224-chex` weight를 사용했으며, RSNA/all weight는 사용하지 않음
+- 현재 결과 기준, TorchXRayVision이 RSNA external validation에서 가장 높은 성능을 보였지만 Domain Shift는 여전히 확인됨
 
 ---
 
@@ -208,5 +286,5 @@ Baseline CNN internal validation 결과:
 
 - Bootstrap 95% CI 계산
 - Grad-CAM 시각화
-- 결과 표 정리
+- 모델별 결과표 정리
 - Internal vs External 성능 차이 분석

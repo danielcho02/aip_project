@@ -1,10 +1,79 @@
 # Project Status
 
-Last updated: 2026.05.19 12:31 KST
+Last updated: 2026.05.20 KST
 
 ---
 
 ## Latest Update
+
+### 2026.05.20 KST
+
+#### ResNet50 학습 및 RSNA external validation 완료
+
+ResNet50 전이학습 코드를 작성하고, SERAPH `moana-y2`에서 Kaggle train/validation split 기준으로 학습을 완료했다.
+
+추가된 코드:
+
+- `src/models/resnet50.py`
+- `src/train_resnet50.py`
+- `src/evaluate_resnet50_external.py`
+
+ResNet50 학습 결과:
+
+- epochs: 10
+- batch size: 32
+- lr: 1e-4
+- seed: 42
+- Best val AUC: 0.9983
+
+Kaggle internal validation 결과:
+
+- Accuracy: 0.9810
+- Precision: 0.9923
+- Recall: 0.9821
+- F1-score: 0.9872
+- AUC: 0.9983
+
+RSNA external validation 방식:
+
+- Kaggle validation에서 Youden's J statistic으로 threshold 계산
+- 계산된 threshold를 RSNA에 그대로 적용
+- RSNA에서는 threshold 재튜닝하지 않음
+- RSNA sample: NORMAL 1000장 + PNEUMONIA 1000장 = 총 2000장
+
+적용 threshold:
+
+- threshold: 0.2040
+
+RSNA external validation 결과:
+
+- Accuracy: 0.6165
+- Precision: 0.5683
+- Recall: 0.9690
+- F1-score: 0.7165
+- AUC: 0.7710
+- n_samples: 2000
+
+해석:
+
+- Baseline CNN external AUC: 0.6402
+- ResNet50 external AUC: 0.7710
+- ResNet50이 Baseline CNN보다 RSNA 외부 성능은 개선됨
+- 그러나 Kaggle internal AUC 0.9983 대비 RSNA external AUC 0.7710으로 성능이 크게 하락하여 Domain Shift가 여전히 확인됨
+- RSNA에서는 Recall은 높지만 Precision이 낮아, 정상 이미지도 폐렴으로 예측하는 경향이 있음
+
+서버 산출물:
+
+- `outputs/resnet50/best_resnet50_seed42.pt`
+- `outputs/resnet50/metrics_seed42.json`
+- `outputs/resnet50_external/internal_threshold_seed42.json`
+- `outputs/resnet50_external/internal_metrics_seed42.json`
+- `outputs/resnet50_external/rsna_external_metrics_seed42.json`
+- `outputs/resnet50_external/rsna_predictions_seed42.csv`
+
+---
+
+## Previous Updates
 
 ### 2026.05.19 12:31 KST
 
@@ -52,8 +121,6 @@ RSNA external validation 결과:
 - `outputs/baseline_external/rsna_predictions_seed42.csv`
 
 ---
-
-## Previous Updates
 
 ### 2026.05.19 11:35 KST
 
@@ -113,6 +180,18 @@ Baseline CNN internal validation 결과:
 - `src/train_baseline.py`
 - `src/rsna_dataset.py`
 - `src/evaluate_baseline_external.py`
+- `src/models/resnet50.py`
+- `src/train_resnet50.py`
+- `src/evaluate_resnet50_external.py`
+
+---
+
+## Current Result Summary
+
+| Model | Internal AUC | External RSNA AUC | External F1 | External Recall | External Precision |
+|---|---:|---:|---:|---:|---:|
+| Baseline CNN | 0.9613 | 0.6402 | 0.6642 | 0.9700 | 0.5049 |
+| ResNet50 | 0.9983 | 0.7710 | 0.7165 | 0.9690 | 0.5683 |
 
 ---
 
@@ -121,13 +200,13 @@ Baseline CNN internal validation 결과:
 - `outputs/`, `.pt`, `.pth` 파일은 GitHub에 올리지 않음
 - RSNA는 학습에 사용하지 않고 external validation에만 사용
 - RSNA threshold는 새로 튜닝하지 않고 Kaggle validation에서 정한 threshold를 그대로 적용
+- 현재 결과 기준, ResNet50이 Baseline보다 외부 성능은 개선했지만 Domain Shift는 여전히 확인됨
 
 ---
 
 ## Next Tasks
 
-- ResNet50 전이학습 코드 작성
-- ResNet50 internal validation 성능 확인
-- ResNet50 기준 RSNA external validation 수행
 - Bootstrap 95% CI 계산
 - Grad-CAM 시각화
+- 결과 표 정리
+- Internal vs External 성능 차이 분석

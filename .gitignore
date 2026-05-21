@@ -1,5 +1,6 @@
 data/
 outputs/
+logs/
 *.zip
 *.pt
 *.pth

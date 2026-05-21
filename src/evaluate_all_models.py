@@ -358,7 +358,7 @@ def main():
     )
 
     rsna_dataset = RSNAPneumoniaDataset(
-        root=args.rsna_root, image_size=args.image_size,
+        rsna_root=args.rsna_root, image_size=args.image_size,
         sample_per_class=args.sample_per_class if args.sample_per_class > 0 else None,
         seed=args.seed,
     )

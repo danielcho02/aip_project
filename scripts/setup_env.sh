@@ -20,7 +20,7 @@ source /data/$USER/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_NAME
 
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-pip install torchxrayvision timm scikit-learn pandas pillow tqdm kaggle
+pip install torchxrayvision timm scikit-learn pandas pillow tqdm kaggle pydicom
 
 echo "[4/4] 설치 확인..."
 python -c "import torch; print('torch:', torch.__version__, '| CUDA:', torch.cuda.is_available())"

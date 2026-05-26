@@ -13,6 +13,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from dataset import KaggleChestXrayDataset
@@ -72,6 +73,30 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda")
 
+    parser.add_argument(
+        "--loss_type",
+        default="bce",
+        choices=["bce", "focal", "weighted_focal"],
+        help="Loss function: bce, focal, or weighted_focal.",
+    )
+    parser.add_argument(
+        "--focal_alpha",
+        type=float,
+        default=0.25,
+        help="Alpha for binary focal loss. This is the positive-class alpha.",
+    )
+    parser.add_argument(
+        "--focal_gamma",
+        type=float,
+        default=2.0,
+        help="Gamma for focal loss.",
+    )
+    parser.add_argument(
+        "--disable_pos_weight",
+        action="store_true",
+        help="Disable pos_weight for BCE or weighted_focal.",
+    )
+
     parser.add_argument("--disable_harmonize_preprocess", action="store_true")
     parser.add_argument("--disable_crop_body", action="store_true")
     parser.add_argument("--percentile_lower", type=float, default=1.0)
@@ -114,6 +139,82 @@ def calculate_pos_weight(csv_path):
         raise ValueError("Cannot compute pos_weight because train split has no positive samples.")
 
     return negative_count / positive_count
+
+
+class BinaryFocalLoss(nn.Module):
+    """
+    Binary focal loss for logits.
+
+    targets:
+        0 = NORMAL
+        1 = PNEUMONIA
+
+    alpha:
+        Positive-class alpha.
+        alpha < 0.5 reduces the relative emphasis on positive samples.
+    gamma:
+        Larger gamma focuses more on hard examples.
+    pos_weight:
+        Optional BCE-style positive weight.
+    """
+
+    def __init__(self, alpha=0.25, gamma=2.0, pos_weight=None):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+        if pos_weight is not None:
+            self.register_buffer("pos_weight", pos_weight.detach().clone())
+        else:
+            self.pos_weight = None
+
+    def forward(self, logits, targets):
+        logits = logits.reshape(-1)
+        targets = targets.float().reshape(-1)
+
+        bce = F.binary_cross_entropy_with_logits(
+            logits,
+            targets,
+            reduction="none",
+            pos_weight=self.pos_weight,
+        )
+
+        probs = torch.sigmoid(logits)
+        pt = probs * targets + (1.0 - probs) * (1.0 - targets)
+
+        focal_factor = (1.0 - pt).pow(self.gamma)
+
+        alpha_t = self.alpha * targets + (1.0 - self.alpha) * (1.0 - targets)
+
+        loss = alpha_t * focal_factor * bce
+
+        return loss.mean()
+
+
+def build_criterion(args, pos_weight):
+    if args.disable_pos_weight:
+        effective_pos_weight = None
+    else:
+        effective_pos_weight = pos_weight
+
+    if args.loss_type == "bce":
+        return nn.BCEWithLogitsLoss(pos_weight=effective_pos_weight)
+
+    if args.loss_type == "focal":
+        return BinaryFocalLoss(
+            alpha=args.focal_alpha,
+            gamma=args.focal_gamma,
+            pos_weight=None,
+        )
+
+    if args.loss_type == "weighted_focal":
+        return BinaryFocalLoss(
+            alpha=args.focal_alpha,
+            gamma=args.focal_gamma,
+            pos_weight=effective_pos_weight,
+        )
+
+    raise ValueError(f"Unknown loss_type: {args.loss_type}")
 
 
 def make_dataset_kwargs(args):
@@ -270,7 +371,7 @@ def main():
     pos_weight_value = calculate_pos_weight(args.csv_path)
     pos_weight = torch.tensor(pos_weight_value, dtype=torch.float32, device=device)
 
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    criterion = build_criterion(args, pos_weight)
 
     model = TorchXRayVisionDenseNetBinary(weights=args.weights).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -289,6 +390,10 @@ def main():
     print(f"Train samples: {len(train_loader.dataset)}")
     print(f"Val samples: {len(val_loader.dataset)}")
     print(f"pos_weight: {pos_weight_value:.6f}")
+    print(f"loss_type: {args.loss_type}")
+    print(f"focal_alpha: {args.focal_alpha}")
+    print(f"focal_gamma: {args.focal_gamma}")
+    print(f"disable_pos_weight: {args.disable_pos_weight}")
     print(f"harmonize_preprocess: {not args.disable_harmonize_preprocess}")
     print(f"crop_body: {not args.disable_crop_body}")
 

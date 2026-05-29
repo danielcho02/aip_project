@@ -137,6 +137,9 @@ class GradCAM:
 
 def read_predictions(path, threshold, prefix_from=None, prefix_to=None):
     df = pd.read_csv(path)
+    if "label" not in df.columns and "true_label" in df.columns:
+        df["label"] = df["true_label"]
+
     required = {"label", "prob", "path"}
     missing = required - set(df.columns)
     if missing:

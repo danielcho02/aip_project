@@ -6,6 +6,181 @@ Last updated: 2026.05.29 KST
 
 ## Latest Update
 
+### 2026.05.29 KST
+
+#### 성능 시각화 및 TorchXRayVision Grad-CAM 완료
+
+기존 학습 및 외부 검증 결과를 바탕으로 성능 비교 그래프와 Grad-CAM 시각화를 생성했다. 새 학습은 수행하지 않았고, 실제 checkpoint와 prediction CSV가 보존되어 있는 TorchXRayVision 기본 모델을 기준으로 Grad-CAM을 수행했다.
+
+이번 작업의 목적은 단순 metric 확인이 아니라, 최종 보고서와 발표 자료에서 사용할 수 있는 시각 자료를 만들고, Kaggle internal validation과 RSNA external validation에서 모델이 어떤 영역을 보고 판단하는지 정성적으로 확인하는 것이다.
+
+추가된 코드:
+
+- `src/preprocessing.py`
+- `src/visualize_results.py`
+- `src/visualize_gradcam.py`
+- `src/export_kaggle_val_predictions.py`
+- `scripts/run_visualize_results.sh`
+- `scripts/run_gradcam.sh`
+- `scripts/gradcam_job.sh`
+- `scripts/run_export_kaggle_val_predictions.sh`
+- `.gitattributes`
+
+#### 성능 시각화 결과
+
+`outputs/`에 저장된 기존 metric json/csv를 사용해 성능 비교 그래프를 생성했다.
+
+생성된 성능 그래프:
+
+- `outputs/figures/internal_vs_external_auc.png`
+- `outputs/figures/auc_drop_by_model.png`
+- `outputs/figures/external_f1_recall_precision_by_model.png`
+- `outputs/figures/preprocess_crop_focal_ablation.png`
+- `outputs/figures/visualized_result_dirs.csv`
+
+시각화에 사용된 실제 결과 디렉터리:
+
+- `outputs/baseline_external`
+- `outputs/resnet50_external`
+- `outputs/torchxrayvision_external`
+- `outputs/torchxrayvision_external_focal_a025_g2`
+
+확인된 주요 결과:
+
+| Model / Setting | Internal AUC | External AUC | External F1 | External Recall | External Precision | AUC Drop |
+|---|---:|---:|---:|---:|---:|---:|
+| Baseline CNN | 0.9613 | 0.6402 | 0.6642 | 0.9700 | 0.5049 | 0.3211 |
+| ResNet50 | 0.9983 | 0.7710 | 0.7165 | 0.9690 | 0.5683 | 0.2273 |
+| TorchXRayVision | 0.9968 | 0.7833 | 0.7468 | 0.9380 | 0.6204 | 0.2135 |
+| TorchXRayVision + Focal Loss | 0.9979 | 0.8195 | 0.7824 | 0.9220 | 0.6794 | 0.1783 |
+
+관찰:
+
+- 모든 모델에서 internal AUC 대비 external AUC가 하락하여 Domain Shift가 다시 확인되었다.
+- Baseline CNN은 external AUC가 0.6402로 가장 낮고 AUC drop도 가장 컸다.
+- TorchXRayVision은 ResNet50보다 external AUC와 F1이 높아 의료 영상 사전학습 모델의 외부 일반화 효과가 확인되었다.
+- Focal Loss 실험은 external AUC 0.8195로 높게 나타났지만, 기존 status 기준으로는 Preprocessing + Body Crop 단독 결과의 AUC 0.8222보다 낮아 최종 개선 기법이 아니라 ablation 결과로 유지한다.
+
+#### Grad-CAM 입력 파일 생성
+
+Grad-CAM 실행을 위해 기존 TorchXRayVision checkpoint를 사용하여 Kaggle validation prediction CSV를 추가 생성했다. 이는 새 학습이 아니라, 저장된 checkpoint를 이용한 validation inference이다.
+
+사용한 파일:
+
+- checkpoint: `outputs/torchxrayvision/best_torchxrayvision_seed42.pt`
+- split csv: `outputs/splits/kaggle_split_seed42.csv`
+- RSNA prediction: `outputs/torchxrayvision_external/rsna_predictions_seed42.csv`
+- threshold: `outputs/torchxrayvision_external/internal_threshold_seed42.json`
+
+생성된 Grad-CAM 입력 파일:
+
+- `outputs/torchxrayvision_external/kaggle_val_predictions_seed42.csv`
+- `outputs/torchxrayvision_external/threshold_policies_seed42.json`
+
+적용 threshold:
+
+- `youden_j`: 0.536637
+
+해당 threshold는 Kaggle validation에서 계산된 값을 그대로 사용했으며, RSNA에서 threshold를 재튜닝하지 않았다.
+
+#### TorchXRayVision Grad-CAM 생성 완료
+
+실제 checkpoint와 prediction CSV가 남아 있는 TorchXRayVision 기본 모델을 기준으로 Grad-CAM을 생성했다.
+
+Grad-CAM 기준 모델:
+
+- Model: TorchXRayVision
+- Weight: `densenet121-res224-chex`
+- Checkpoint: `outputs/torchxrayvision/best_torchxrayvision_seed42.pt`
+- Result dir: `outputs/torchxrayvision_external`
+
+생성 위치:
+
+- `outputs/figures/gradcam_torchxrayvision`
+
+생성 결과:
+
+- 총 파일 수: 66개
+- 전체 크기: 약 17MB
+- Kaggle internal validation과 RSNA external validation 각각에 대해 TP, FP, FN, TN 케이스를 샘플링
+- 각 케이스별로 `original.png`, `preprocessed.png`, `gradcam_overlay.png`, `panel.png` 생성
+- 각 domain별 `manifest.csv` 생성
+
+생성 구조:
+
+```text
+outputs/figures/gradcam_torchxrayvision/
+├── kaggle_internal/
+│   ├── TP / FP / FN / TN cases
+│   └── manifest.csv
+└── rsna_external/
+    ├── TP / FP / FN / TN cases
+    └── manifest.csv
+```
+
+대표 Grad-CAM 패널은 GitHub 공유를 위해 `docs/figures/gradcam/`에 복사했다.
+
+공유용 Grad-CAM 대표 이미지:
+
+- `docs/figures/gradcam/kaggle_tp_panel.png`
+- `docs/figures/gradcam/kaggle_fp_panel.png`
+- `docs/figures/gradcam/kaggle_fn_panel.png`
+- `docs/figures/gradcam/kaggle_tn_panel.png`
+- `docs/figures/gradcam/rsna_tp_panel.png`
+- `docs/figures/gradcam/rsna_fp_panel.png`
+- `docs/figures/gradcam/rsna_fn_panel.png`
+- `docs/figures/gradcam/rsna_tn_panel.png`
+
+성능 그래프 대표 이미지도 GitHub 공유를 위해 `docs/figures/performance/`에 복사했다.
+
+공유용 성능 시각화 이미지:
+
+- `docs/figures/performance/internal_vs_external_auc.png`
+- `docs/figures/performance/auc_drop_by_model.png`
+- `docs/figures/performance/external_f1_recall_precision_by_model.png`
+- `docs/figures/performance/preprocess_crop_focal_ablation.png`
+
+GitHub 반영:
+
+- commit: `docs: add performance and gradcam figures`
+- 대표 성능 그래프 및 Grad-CAM 패널 12개를 `docs/figures/`에 추가
+- `outputs/`, `.pt`, `.pth`, prediction CSV, metric JSON은 GitHub에 커밋하지 않음
+
+#### 운영 메모
+
+- Grad-CAM은 SERAPH `sbatch`를 통해 GPU node에서 실행했다.
+- 실행 노드: `moana-u4`
+- CUDA 사용 확인: `torch 2.5.1+cu121 cuda True`
+- node-local dataset 경로:
+  - Kaggle: `/local_datasets/daniel3290/chest_xray_kaggle/chest_xray`
+  - RSNA: `/local_datasets/daniel3290/rsna`
+- `/data`를 DataLoader가 직접 읽지 않도록 하고, `/local_datasets` 기준으로 실행했다.
+- `outputs/figures/` 전체 결과는 로컬 Windows `aip_project/outputs/figures/`에도 다운로드 완료했다.
+- `docs/figures/`는 팀원 공유 및 최종 보고서/발표 자료용 대표 이미지 보관 위치로 사용한다.
+
+#### 해석 방향
+
+이번 Grad-CAM 결과는 최종 정량 성능이 가장 높았던 Preprocessing + Body Crop 모델이 아니라, 실제 checkpoint와 prediction CSV가 보존되어 있는 TorchXRayVision 기본 모델 기준으로 생성했다.
+
+따라서 최종 보고서에서는 다음과 같이 정리한다.
+
+- 정량 성능 비교에서는 Preprocessing + Body Crop 결과를 포함한다.
+- 정성적 Grad-CAM 분석은 실제 산출물이 보존된 TorchXRayVision 기본 모델을 기준으로 수행한다.
+- Grad-CAM은 성능 개선 자체보다 Kaggle internal과 RSNA external에서 모델 주목 영역이 어떻게 달라지는지 확인하는 Domain Shift 해석 자료로 사용한다.
+
+#### 현재 완료된 작업
+
+- 성능 비교 그래프 생성 완료
+- TorchXRayVision Grad-CAM 입력 파일 생성 완료
+- Kaggle internal / RSNA external TP, FP, FN, TN Grad-CAM 생성 완료
+- 대표 성능 그래프 및 Grad-CAM 패널 GitHub 업로드 완료
+- 전체 시각화 결과 로컬 다운로드 완료
+
+
+---
+
+## Previous Updates
+
 ### 2026.05.23 KST
 
 #### 전처리 통일 + Body Crop 적용 및 Focal Loss Ablation 완료
@@ -66,7 +241,6 @@ Focal loss 적용 결과 recall은 0.9060에서 0.9220으로 증가했지만, pr
 - `torchxrayvision` package를 프로젝트 내부 `python_packages/`에 설치하여 sbatch 실행 환경에서 import 가능하도록 처리.
 - `pydicom`도 RSNA DICOM 로딩을 위해 `python_packages/`에 추가 설치.
 - TorchXRayVision DenseNet의 18-output `op_norm` 충돌을 피하기 위해 backbone feature extractor를 직접 사용하고 binary classifier head를 적용.
-
 
 ### 2026.05.21 17:08 KST
 
@@ -216,10 +390,6 @@ RSNA external validation 결과:
 - `outputs/torchxrayvision_external/internal_metrics_seed42.json`
 - `outputs/torchxrayvision_external/rsna_external_metrics_seed42.json`
 - `outputs/torchxrayvision_external/rsna_predictions_seed42.csv`
-
----
-
-## Previous Updates
 
 ### 2026.05.20 KST
 
@@ -386,6 +556,8 @@ Baseline CNN internal validation 결과:
 
 ---
 
+---
+
 ## Current Code Files
 
 - `src/prepare_kaggle_split.py`
@@ -401,6 +573,15 @@ Baseline CNN internal validation 결과:
 - `src/models/torchxrayvision_model.py`
 - `src/train_torchxrayvision.py`
 - `src/evaluate_torchxrayvision_external.py`
+- `src/preprocessing.py`
+- `src/visualize_results.py`
+- `src/visualize_gradcam.py`
+- `src/export_kaggle_val_predictions.py`
+- `scripts/run_visualize_results.sh`
+- `scripts/run_gradcam.sh`
+- `scripts/gradcam_job.sh`
+- `scripts/run_export_kaggle_val_predictions.sh`
+
 
 ---
 
@@ -419,6 +600,8 @@ Baseline/ResNet50/TorchXRayVision 기본 실험은 Bootstrap 95% CI (n=1000)를 
 
 ---
 
+---
+
 ## Notes
 
 - `outputs/`, `.pt`, `.pth` 파일은 GitHub에 올리지 않음
@@ -429,11 +612,19 @@ Baseline/ResNet50/TorchXRayVision 기본 실험은 Bootstrap 95% CI (n=1000)를 
 - Focal loss는 recall을 높였지만 AUC/F1 개선으로 이어지지 않아 ablation study 결과로만 포함
 
 ---
+- `docs/figures/`에는 발표 및 보고서 공유용 대표 성능 그래프와 Grad-CAM 패널만 저장한다.
+- 전체 Grad-CAM 결과와 prediction CSV는 `outputs/`에만 보관하고 GitHub에는 커밋하지 않는다.
+- Grad-CAM 정성 분석은 실제 checkpoint와 prediction CSV가 보존된 TorchXRayVision 기본 모델 기준으로 수행했다.
+- Preprocessing + Body Crop 모델은 정량 성능 비교에는 포함하지만, 해당 산출물의 checkpoint/prediction 파일이 현재 보존되어 있지 않아 Grad-CAM 기준 모델로는 사용하지 않았다.
+
+---
 
 ## Next Tasks
 
-- Grad-CAM 시각화
-- Internal vs External 성능 차이 정성적 분석 (실패 케이스 샘플링)
-- Preprocessing + Body Crop 결과에 대한 Bootstrap 95% CI 계산
-- 5개 threshold policy 비교 및 preprocessing/crop 개선에 대한 통계적 유의성 검정 (paired bootstrap)
+- Grad-CAM 대표 이미지 육안 검토 및 정성 분석
+- Kaggle internal과 RSNA external의 주목 영역 차이 해석
+- FP/FN 실패 케이스 중심 Domain Shift 분석
+- 최종 보고서 및 발표 자료에 성능 그래프와 Grad-CAM 패널 반영
+- 선택 사항: Preprocessing + Body Crop 결과에 대한 Bootstrap 95% CI 계산
+- 선택 사항: preprocessing/crop 개선 효과에 대한 paired bootstrap 검정
 

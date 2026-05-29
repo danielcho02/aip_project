@@ -1,10 +1,72 @@
 # Project Status
 
-Last updated: 2026.05.21 17:08 KST
+Last updated: 2026.05.29 KST
 
 ---
 
 ## Latest Update
+
+### 2026.05.23 KST
+
+#### 전처리 통일 + Body Crop 적용 및 Focal Loss Ablation 완료
+
+TorchXRayVision 모델의 RSNA external validation 성능 개선을 위해 입력 전처리 단계를 추가로 수정했다. 기존 모델 구조와 평가 방식은 유지하되, Kaggle JPEG 이미지와 RSNA DICOM 이미지 간 입력 분포 차이를 줄이기 위해 동일한 preprocessing pipeline을 적용했다.
+
+추가 적용한 기법:
+
+- percentile 기반 intensity normalization
+- non-black/background 영역 제거를 위한 body crop
+- Kaggle/RSNA 입력 처리 방식 통일
+- TorchXRayVision 학습 코드에 loss function 선택 옵션 추가
+- focal loss 실험을 ablation study로 추가
+
+평가 설정:
+
+- seed: 42
+- Main policy: **`youden_j`**
+- Threshold: Kaggle validation에서 계산한 threshold를 RSNA external validation에 그대로 적용
+- External: RSNA stage_2_train_images에서 클래스별 1,000 샘플 (n=2000)
+- RSNA에서는 threshold 재튜닝하지 않음
+
+#### Preprocessing + Body Crop 결과
+
+| Setting | Accuracy | Precision | Recall | F1 | AUC | Threshold | Predicted Positive Rate | Mean Probability |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| TorchXRayVision + Preprocessing + Body Crop | 0.7500 | 0.6905 | 0.9060 | 0.7837 | 0.8222 | 0.6867 | 0.6560 | 0.6727 |
+
+이전 TorchXRayVision external AUC 0.7833 대비, preprocessing + body crop 적용 후 external AUC가 0.8222로 상승했다. 또한 F1-score도 0.7468에서 0.7837로 상승했다. 따라서 현재 실험 기준으로는 모델 구조를 추가로 변경하는 것보다, Kaggle과 RSNA 사이의 입력 분포 차이를 줄이는 전처리 통일과 배경 제거가 외부 검증 성능 개선에 더 직접적으로 기여한 것으로 정리할 수 있다.
+
+#### Focal Loss Ablation
+
+전처리 + body crop을 적용한 상태에서 loss function만 focal loss로 변경하여 ablation study를 수행했다. Focal loss는 hard example에 더 집중하도록 하는 목적이 있으므로, RSNA external validation에서 혼동되는 샘플에 대한 성능 개선 가능성을 확인하기 위해 추가했다.
+
+| Setting | Accuracy | Precision | Recall | F1 | AUC | Threshold | Predicted Positive Rate | Mean Probability |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Preprocessing + Body Crop | 0.7500 | 0.6905 | 0.9060 | 0.7837 | 0.8222 | 0.6867 | 0.6560 | 0.6727 |
+| Preprocessing + Body Crop + Focal Loss | 0.7435 | 0.6794 | 0.9220 | 0.7824 | 0.8195 | 0.5867 | 0.6785 | 0.6333 |
+
+Focal loss 적용 결과 recall은 0.9060에서 0.9220으로 증가했지만, precision은 0.6905에서 0.6794로 감소했다. 그 결과 F1-score는 0.7837에서 0.7824로 소폭 감소했고, AUC도 0.8222에서 0.8195로 소폭 감소했다. 따라서 focal loss는 폐렴 예측을 더 많이 하도록 만드는 방향의 변화는 있었지만, false positive 증가로 인해 최종 성능 개선에는 기여하지 못했다. 본 결과는 최종 성능 개선 기법이 아니라 loss function ablation study로 포함한다.
+
+#### 관찰
+
+- 전처리 통일 + body crop 적용 후 TorchXRayVision의 RSNA external AUC가 0.7833에서 0.8222로 상승했다.
+- F1-score도 0.7468에서 0.7837로 상승하여, 외부 검증 기준 현재까지 가장 좋은 결과를 기록했다.
+- Focal loss는 recall을 높였지만 precision과 AUC가 감소하여 최종 모델 개선으로 채택하지 않는다.
+- 현재 결과 기준으로는 threshold policy 변경이나 loss 변경보다 preprocessing/domain harmonization이 더 효과적인 개선 방향으로 보인다.
+
+산출물:
+
+- `outputs/torchxrayvision/outputs` 또는 `outputs/torchxrayvision_preprocess_crop` 계열 checkpoint
+- `external_outputs/rsna_external_metrics_seed42.json`
+- `external_outputs/rsna_predictions_seed42.csv`
+- focal loss 실험 결과는 ablation 결과로 별도 보관
+
+운영 메모:
+
+- `torchxrayvision` package를 프로젝트 내부 `python_packages/`에 설치하여 sbatch 실행 환경에서 import 가능하도록 처리.
+- `pydicom`도 RSNA DICOM 로딩을 위해 `python_packages/`에 추가 설치.
+- TorchXRayVision DenseNet의 18-output `op_norm` 충돌을 피하기 위해 backbone feature extractor를 직접 사용하고 binary classifier head를 적용.
+
 
 ### 2026.05.21 17:08 KST
 
@@ -313,6 +375,7 @@ Baseline CNN internal validation 결과:
 
 - `src/prepare_kaggle_split.py`
 - `src/dataset.py`
+- `src/xray_preprocess.py`
 - `src/models/baseline_cnn.py`
 - `src/train_baseline.py`
 
@@ -327,6 +390,7 @@ Baseline CNN internal validation 결과:
 
 - `src/prepare_kaggle_split.py`
 - `src/dataset.py`
+- `src/xray_preprocess.py`
 - `src/models/baseline_cnn.py`
 - `src/train_baseline.py`
 - `src/rsna_dataset.py`
@@ -342,13 +406,16 @@ Baseline CNN internal validation 결과:
 
 ## Current Result Summary
 
-`youden_j` threshold policy 기준, Bootstrap 95% CI (n=1000). Internal = Kaggle val (n=1051), External = RSNA (n=2000).
+`youden_j` threshold policy 기준. Internal = Kaggle val (n=1051), External = RSNA (n=2000).  
+Baseline/ResNet50/TorchXRayVision 기본 실험은 Bootstrap 95% CI (n=1000)를 포함한다. Preprocessing + Body Crop 및 Focal Loss ablation 결과는 현재 단일 seed 평가 결과 기준이다.
 
-| Model | Internal AUC [95% CI] | External AUC [95% CI] | External F1 | External Recall | External Precision |
+| Model / Setting | Internal AUC [95% CI] | External AUC | External F1 | External Recall | External Precision |
 |---|---:|---:|---:|---:|---:|
 | Baseline CNN | 0.9613 [0.948, 0.972] | 0.6402 [0.616, 0.663] | 0.6642 | 0.9700 | 0.5049 |
 | ResNet50 | 0.9983 [0.997, 0.999] | 0.7709 [0.750, 0.790] | 0.7154 | 0.9690 | 0.5670 |
 | TorchXRayVision | 0.9968 [0.995, 0.998] | 0.7833 [0.763, 0.803] | 0.7468 | 0.9380 | 0.6204 |
+| TorchXRayVision + Preprocessing + Body Crop | - | 0.8222 | 0.7837 | 0.9060 | 0.6905 |
+| TorchXRayVision + Preprocessing + Body Crop + Focal Loss (Ablation) | - | 0.8195 | 0.7824 | 0.9220 | 0.6794 |
 
 ---
 
@@ -358,7 +425,8 @@ Baseline CNN internal validation 결과:
 - RSNA는 학습에 사용하지 않고 external validation에만 사용
 - RSNA threshold는 새로 튜닝하지 않고 Kaggle validation에서 정한 threshold를 그대로 적용
 - TorchXRayVision은 `densenet121-res224-chex` weight를 사용했으며, RSNA/all weight는 사용하지 않음
-- 현재 결과 기준, TorchXRayVision이 RSNA external validation에서 가장 높은 성능을 보였지만 Domain Shift는 여전히 확인됨
+- 현재 결과 기준, TorchXRayVision + Preprocessing + Body Crop이 RSNA external validation에서 가장 높은 성능을 보였지만 Domain Shift는 여전히 확인됨
+- Focal loss는 recall을 높였지만 AUC/F1 개선으로 이어지지 않아 ablation study 결과로만 포함
 
 ---
 
@@ -366,4 +434,6 @@ Baseline CNN internal validation 결과:
 
 - Grad-CAM 시각화
 - Internal vs External 성능 차이 정성적 분석 (실패 케이스 샘플링)
-- 5개 threshold policy 비교에 대한 통계적 유의성 검정 (paired bootstrap)
+- Preprocessing + Body Crop 결과에 대한 Bootstrap 95% CI 계산
+- 5개 threshold policy 비교 및 preprocessing/crop 개선에 대한 통계적 유의성 검정 (paired bootstrap)
+

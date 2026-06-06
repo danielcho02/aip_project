@@ -1,5 +1,7 @@
 data/
 outputs/
+node_modules/
+package-lock.json
 *.zip
 *.pt
 *.pth
@@ -8,3 +10,12 @@ __pycache__/
 .kaggle/
 kaggle.json
 .vscode/sftp.json
+make_ppt.js
+make_report.py
+make_arch_figure.py
+package.json
+.mcp.json
+.serena/
+session-report*.json
+session-report*.html
+nul
